@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 wd = os.getcwd()
 np.random.seed(20)
 
-
+limit2 = None #This is for Other nodes outside the class
 
 def read_params_from_file(file_path):
     with open(file_path, 'r') as file:
@@ -37,7 +37,7 @@ def read_params_from_file(file_path):
 class createGraph:
     
     
-    limit = 10
+    limit = None
     
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -87,7 +87,10 @@ class createGraph:
 
             if count > 0:
                 # Data exists, proceed with dropping indices and deleting data
-                session.run("DROP INDEX movie_overview_index")
+                try:
+                    session.run("DROP INDEX movie_overview_index")
+                except:
+                    print("No index to drop")
                 delete_data_query = "MATCH (n) DETACH DELETE n;"
                 session.run(delete_data_query)
                 print("All indices dropped and data deleted")
@@ -295,6 +298,31 @@ class createGraph:
                 department=department
             )
 
+    def load_users(self, file):
+        df = pd.read_csv(file).head(self.limit)
+        for _, row in df.iterrows():
+            user_id = row['userId']
+            movie_id = row['movieId']
+            rating = row['rating']
+            timestamp = row['timestamp']
+            self.connect_user_to_movie(user_id, movie_id, rating, timestamp)
+
+    def connect_user_to_movie(self, user_id, movie_id, rating, timestamp):
+        user_node_id = "User " + str(user_id)
+        
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (u:User {id: $user_node_id}) "
+                "SET u.userId = $user_id "
+                "WITH u "
+                "MATCH (m:Movie {id: $movie_id}) "
+                "MERGE (u)-[:RATED {rating: $rating, timestamp: $timestamp}]->(m)",
+                user_node_id=user_node_id,
+                user_id=user_id,
+                movie_id=movie_id,
+                rating=rating,
+                timestamp=timestamp
+            )            
 #%%
             
 'Read the credentials to your database'
@@ -304,26 +332,31 @@ uri, user, password = read_params_from_file(wd+"\\params.txt")
 
 movieGraph = createGraph(uri, user, password)
 del password
-movieGraph.drop_data()
 
-movieGraph.load_movies_from_csv("movies_metadata.csv")#Linked to Import Folder of neo4j
-
-
+reCreate = True
 others = True
+actors = True
+crew = True
+users = True
+
+if reCreate:
+    movieGraph.drop_data()
+
+    movieGraph.load_movies_from_csv("movies_metadata.csv")#Linked to Import Folder of neo4j
+
 if others:
     df = pd.read_csv(wd+"\\movies_metadata.csv")
-    df.head().apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
+    df.head(limit2).apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
 
-
-actors = True
 if actors:
     movieGraph.load_actors(wd+"\\credits.csv")
 
-crew = True
-
 if crew:
     movieGraph.load_crew(wd+"\\credits.csv")
-
+    
+if users:
+    movieGraph.load_users(wd+"\\ratings.csv")       
+    
 
 end = time.time()
 print("Elapsed Time : ", end - start)
