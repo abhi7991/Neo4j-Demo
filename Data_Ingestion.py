@@ -34,6 +34,7 @@ wd = os.getcwd()
 load_dotenv()
 np.random.seed(20)
 
+
 limit2 = 50 #This is for Other nodes outside the class
 
 def read_params_from_file(file_path):
@@ -365,7 +366,6 @@ class createGraph:
                 rating=rating,
                 timestamp=timestamp
             )            
-        
             
 # 'Read the credentials to your database'
 start = time.time()
