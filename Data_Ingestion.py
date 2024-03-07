@@ -25,6 +25,9 @@ import warnings
 import pickle
 from tqdm import tqdm
 from dotenv import load_dotenv
+import pickle
+from tqdm import tqdm
+from dotenv import load_dotenv
 warnings.filterwarnings("ignore")
 
 wd = os.getcwd()
@@ -189,6 +192,7 @@ class createGraph:
                     )                
     
                     session.run(query, movieId=row['id'], languages=lang)   
+                    session.run(query, movieId=row['id'], languages=lang)   
             except:
                 pass
 
@@ -209,6 +213,7 @@ class createGraph:
                         "MERGE (m:Movie {id: toInteger($movieId)}) "
                         "WITH m UNWIND $countries AS country "
                         "MERGE (p:Country {name: country.name}) ON CREATE SET p.id = toInteger(country.id) "
+                        "MERGE (m)-[:COUNTRIES]->(p)"
                         "MERGE (m)-[:COUNTRIES]->(p)"
                     )                
     
