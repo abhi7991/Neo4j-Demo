@@ -22,12 +22,16 @@ from neo4j import GraphDatabase
 import os
 import time
 import warnings
+import pickle
+from tqdm import tqdm
+from dotenv import load_dotenv
 warnings.filterwarnings("ignore")
 
 wd = os.getcwd()
+load_dotenv()
 np.random.seed(20)
 
-
+limit2 = 50 #This is for Other nodes outside the class
 
 def read_params_from_file(file_path):
     with open(file_path, 'r') as file:
@@ -37,7 +41,7 @@ def read_params_from_file(file_path):
 class createGraph:
     
     
-    limit = 10
+    limit = 50
     
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -53,6 +57,7 @@ class createGraph:
         linked to Neo4j
         
         '''
+        
         print(f"LIMIT {self.limit}" if self.limit is not None else "")
         with self.driver.session() as session:
             # Cypher query to load movies from CSV
@@ -65,15 +70,15 @@ class createGraph:
                 "revenue: toInteger(coalesce(row.revenue, 0)), "
                 "spoken_languages: row.spoken_languages, overview: row.overview, "
                 "vote_average: toInteger(coalesce(row.vote_average, 0)), "
-                "vote_count: toInteger(coalesce(row.vote_count, 0))});\n"
+                "vote_count: toInteger(coalesce(row.vote_count, 0))}) "  
             )
            
             session.run(query, csvFile=f'file:///{csv_file}', limit=self.limit)
             print(f"Data Uploaded to Neo4j desktop for the first {self.limit} rows")
             # Create index after loading data
             #            query_create_index = "CREATE INDEX FOR (m:Movie) ON (m.overview)"
-            query_create_index = "CREATE FULLTEXT INDEX movie_overview_index FOR (m:Movie) ON EACH [m.overview]"
-            session.run(query_create_index)
+            # query_create_index = "CREATE FULLTEXT INDEX movie_overview_index FOR (m:Movie) ON EACH [m.overview]"
+            # session.run(query_create_index)
            
             print("Movie Overview Indexed")
             
@@ -87,7 +92,10 @@ class createGraph:
 
             if count > 0:
                 # Data exists, proceed with dropping indices and deleting data
-                session.run("DROP INDEX movie_overview_index")
+                try:
+                    session.run("DROP INDEX movie_overview_index")
+                except:
+                    print("No index to drop")
                 delete_data_query = "MATCH (n) DETACH DELETE n;"
                 session.run(delete_data_query)
                 print("All indices dropped and data deleted")
@@ -180,7 +188,7 @@ class createGraph:
                         "MERGE (m)-[:LANGUAGES]->(p)"
                     )                
     
-                    session.run(query, movieId=row['id'], languages=lang)               
+                    session.run(query, movieId=row['id'], languages=lang)   
             except:
                 pass
 
@@ -201,13 +209,45 @@ class createGraph:
                         "MERGE (m:Movie {id: toInteger($movieId)}) "
                         "WITH m UNWIND $countries AS country "
                         "MERGE (p:Country {name: country.name}) ON CREATE SET p.id = toInteger(country.id) "
-                        "MERGE (m)-[:LANGUAGES]->(p)"
+                        "MERGE (m)-[:COUNTRIES]->(p)"
                     )                
     
                     session.run(query, movieId=row['id'], countries=country)                
             except:
                 pass
-
+            
+    def load_overview_embeddings(self):
+        
+        with open('movie_embeddings.pickle', 'rb') as f:
+                embedding_dict = pickle.load(f)
+        
+        with self.driver.session() as session:
+            for id,embedding in tqdm(embedding_dict.items()):
+                query = (
+                    "MATCH (m:Movie ) "
+                    "WHERE m.id = toInteger($movieId) "
+                    "SET m.embedding = $embedding "
+                )                
+                session.run(query, movieId=id, embedding=embedding) 
+            
+            print("Overview Embeddings loaded to Neo4j desktop")
+            
+            try:
+                session.run("DROP INDEX overview_embeddings")
+            except:
+                print("No index to drop")
+        
+            query_index = (
+                        "CREATE VECTOR INDEX overview_embeddings "
+                        "FOR (m: movie) ON (m.embedding) "
+                        "OPTIONS {indexConfig: { "
+                        "`vector.dimensions`: 768, "
+                        "`vector.similarity_function`: 'cosine'}}"
+                    )            
+                    
+            session.run(query_index)   
+            print("Overview Vector index created in Neo4j desktop")
+        
     def load_actors(self,file):
         df = pd.read_csv(file)
         df = df.head(self.limit)
@@ -295,37 +335,70 @@ class createGraph:
                 department=department
             )
 
-#%%
+    def load_users(self, file):
+        df = pd.read_csv(file).head(self.limit)
+        for _, row in df.iterrows():
+            user_id = row['userId']
+            movie_id = row['movieId']
+            rating = row['rating']
+            timestamp = row['timestamp']
+            self.connect_user_to_movie(user_id, movie_id, rating, timestamp)
+
+    def connect_user_to_movie(self, user_id, movie_id, rating, timestamp):
+        user_node_id = "User " + str(user_id)
+        
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (u:User {id: $user_node_id}) "
+                "SET u.userId = $user_id "
+                "WITH u "
+                "MATCH (m:Movie {id: $movie_id}) "
+                "MERGE (u)-[:RATED {rating: $rating, timestamp: $timestamp}]->(m)",
+                user_node_id=user_node_id,
+                user_id=user_id,
+                movie_id=movie_id,
+                rating=rating,
+                timestamp=timestamp
+            )            
+        
             
-'Read the credentials to your database'
+# 'Read the credentials to your database'
 start = time.time()
 #Check Limits below and above
-uri, user, password = read_params_from_file(wd+"\\params.txt") 
+uri, user, password = os.environ.get('NEO4J_URI'), os.environ.get('NEO4J_USER'), os.environ.get('NEO4J_PASSWORD')
+print(uri, user, password)
 
 movieGraph = createGraph(uri, user, password)
 del password
-movieGraph.drop_data()
 
-movieGraph.load_movies_from_csv("movies_metadata.csv")#Linked to Import Folder of neo4j
-
-
+reCreate = True
 others = True
-if others:
-    df = pd.read_csv(wd+"\\movies_metadata.csv")
-    df.head().apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
-
-
 actors = True
-if actors:
-    movieGraph.load_actors(wd+"\\credits.csv")
-
 crew = True
+users = True
+
+if reCreate:
+    movieGraph.drop_data()
+
+    movieGraph.load_movies_from_csv("movies_metadata.csv")#Linked to Import Folder of neo4j
+
+if others:
+    df = pd.read_csv(wd+"/data/movies_metadata.csv")
+    df.head(limit2).apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
+
+if actors:
+    movieGraph.load_actors(wd+"/data/credits.csv")
 
 if crew:
-    movieGraph.load_crew(wd+"\\credits.csv")
-
+    movieGraph.load_crew(wd+"/data/credits.csv")
+    
+if users:
+    movieGraph.load_users(wd+"/data/ratings.csv")     
+    
+movieGraph.load_overview_embeddings() 
+    
 
 end = time.time()
 print("Elapsed Time : ", end - start)
 
-#
+
