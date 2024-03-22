@@ -219,7 +219,7 @@ class createGraph:
     def load_actors(self,file):
         df = pd.read_csv(file)
         df = df.head(self.limit)
-        for i,r in df.iterrows():
+        for i, r in tqdm(df.iterrows(), total=len(df), desc="Loading Actors"):
             cast = pd.DataFrame(eval(df.iloc[:,0][i]))
             cast['movie_id'] = df.iloc[:,2][i]
         
@@ -275,7 +275,7 @@ class createGraph:
             
     def load_crew(self, file):
         df = pd.read_csv(file).head(self.limit)
-        for i,r in df.iterrows():
+        for i, r in tqdm(df.iterrows(), total=len(df), desc="Loading Crew"):
             cast = pd.DataFrame(eval(df.iloc[:,1][i]))
             cast['movie_id'] = df.iloc[:,2][i]        
             for i, r in cast.iterrows():
@@ -321,7 +321,7 @@ class createGraph:
 
     def load_users(self, file):
         df = pd.read_csv(file).head(self.limit)
-        for _, row in df.iterrows():
+        for _, row in tqdm(df.iterrows(), total=len(df), desc="Loading Users"):
             user_id = row['userId']
             movie_id = row['movieId']
             rating = row['rating']
@@ -470,9 +470,9 @@ movieGraph = createGraph(uri, user, password)
 del password
  
 reCreate = True
-others = False
-actors = False
-crew = False 
+others = True
+actors = True
+crew = True 
 embeddings = True
 if reCreate:
 
@@ -483,11 +483,12 @@ if reCreate:
     
 if embeddings:
         movieGraph.load_overview_embeddings() 
-#%%
 if others:
+    tqdm.pandas(desc='Other Nodes')
     df = pd.read_csv(wd+"\\movies_metadata.csv")
-    df.head(limit2).apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
-
+#    df.head(limit2).apply(lambda x  : movieGraph.loadNodes(x), axis = 1)
+    df.head(limit2).progress_apply(lambda x : movieGraph.loadNodes(x), axis=1)
+    
 if actors:
     movieGraph.load_actors(wd+"\\credits.csv")
  
