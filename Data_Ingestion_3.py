@@ -18,12 +18,15 @@ from tqdm import tqdm
 import time
 import pickle
 import warnings
+from dotenv import load_dotenv
+
 warnings.filterwarnings("ignore")
 
 wd = os.getcwd()
 np.random.seed(20)
+load_dotenv()
 
-limit2 = None #This is for Other nodes outside the class
+limit2 = 1000 #This is for Other nodes outside the class
 
 def read_params_from_file(file_path):
     with open(file_path, 'r') as file:
@@ -32,14 +35,18 @@ def read_params_from_file(file_path):
 
 class createGraph:
     
-    
-    limit = None
-    
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200)
 
     def close(self):
         self.driver.close()
+
+    def createConstraint(self):
+        query1 = "CREATE CONSTRAINT unique_movie_id IF NOT EXISTS FOR (p:Movie) REQUIRE (p.id) IS NODE KEY;"
+#        query2 = "CREATE CONSTRAINT unique_movie IF NOT EXISTS FOR (p:Movie) REQUIRE (p.name) IS NODE KEY;"
+        with self.driver.session() as session:
+            session.run(query1)
+#            session.run(query2)
 
     def load_movies_from_csv(self, csv_file):
         
@@ -52,29 +59,45 @@ class createGraph:
         print(f"LIMIT {self.limit}" if self.limit is not None else "")
         with self.driver.session() as session:
             # Cypher query to load movies from CSV
+#            query = (
+#                "LOAD CSV WITH HEADERS FROM $csvFile AS row "
+#                "WITH row " + (f"LIMIT {self.limit}" if self.limit is not None else "") +
+#                " CREATE (:Movie {name: row.original_title, "
+#                "id: toInteger(row.id), imdb_id: row.imdb_id, "
+#                "popularity: toFloat(coalesce(row.popularity, 0.0)), "
+#                "revenue: toInteger(coalesce(row.revenue, 0)), "
+#                "spoken_languages: row.spoken_languages, overview: row.overview, "
+#                "vote_average: toInteger(coalesce(row.vote_average, 0)), "
+#                "vote_count: toInteger(coalesce(row.vote_count, 0))});\n"
+#            )
             query = (
                 "LOAD CSV WITH HEADERS FROM $csvFile AS row "
-                "WITH row " + (f"LIMIT {self.limit}" if self.limit is not None else "") +
-                " CREATE (:Movie {name: row.original_title, "
-                "id: toInteger(row.id), imdb_id: row.imdb_id, "
-                "popularity: toFloat(coalesce(row.popularity, 0.0)), "
-                "revenue: toInteger(coalesce(row.revenue, 0)), "
-                "spoken_languages: row.spoken_languages, overview: row.overview, "
-                "vote_average: toInteger(coalesce(row.vote_average, 0)), "
-                "vote_count: toInteger(coalesce(row.vote_count, 0))});\n"
+                "WITH row WHERE row.id IS NOT NULL "  # Filter out rows with null id
+                + (f"LIMIT {self.limit} " if self.limit is not None else "") +
+                "MERGE (m:Movie {id: toInteger(row.id)}) "
+                "ON CREATE SET m.name = row.original_title, "
+                "m.imdb_id = row.imdb_id, "
+                "m.popularity = toFloat(coalesce(row.popularity, 0.0)), "
+                "m.revenue = toInteger(coalesce(row.revenue, 0)), "
+                "m.spoken_languages = row.spoken_languages, "
+                "m.overview = row.overview_upd, "
+                "m.vote_average = toInteger(coalesce(row.vote_average, 0)), "
+                "m.vote_count = toInteger(coalesce(row.vote_count, 0));\n"
             )
-           
+
+
+
             session.run(query, csvFile=f'file:///{csv_file}', limit=self.limit)
             print(f"Data Uploaded to Neo4j desktop for the first {self.limit} rows")
 
             query_create_index = "CREATE FULLTEXT INDEX movie_overview_index FOR (m:Movie) ON EACH [m.overview]"
             session.run(query_create_index)
-            create_index = 'CREATE INDEX id_index FOR (m:Movie) ON (m.id)'
-            session.run(create_index)
+#            create_index = 'CREATE INDEX id_index FOR (m:Movie) ON (m.id)'
+#            session.run(create_index)
             
             print("Movie Overview Indexed")
             
-            
+    limit = None            
     def drop_data(self):
         with self.driver.session() as session:
             # Check if data exists before attempting to delete
@@ -92,12 +115,20 @@ class createGraph:
                 try:
                     session.run("DROP INDEX id_index")
                 except:
-                    print("No index to drop")                    
+                    print("No index to drop")           
+                    
+                try: 
+                    session.run("DROP CONSTRAINT unique_movie_id IF EXISTS;")
+                except:
+                    print("No constraint to drop")  
                 delete_data_query = (
                         "CALL apoc.periodic.iterate("
                         '"MATCH (n) RETURN n", "DETACH DELETE n", {batchSize: 10000});'
                     )
-                session.run(delete_data_query)
+#                session.run(delete_data_query)
+                query = "MATCH (n) with n limit 300 DETACH DELETE n;"
+                for i in range(1,1000):
+                    session.run(query)                        
                 print("All indices dropped and data deleted")
             else:
                 print("No data to delete")
@@ -229,8 +260,11 @@ class createGraph:
         with self.driver.session() as session:
             for idx, (id, embedding) in tqdm(enumerate(embedding_dict.items())):
                 # Set your desired limit, for example, 100
-                if idx >= self.limit:
-                    break
+#                idx = {False} if self.limit is not None else true)
+                idx1 = {False} if self.limit is not None else True
+                if idx1:            
+                    if idx >= self.limit:
+                        break
                 query = (
                     "MATCH (m:Movie {id: toInteger($movieId)}) "
                     "CALL db.create.setNodeVectorProperty(m, 'embedding', $embedding) "
@@ -254,15 +288,60 @@ class createGraph:
                     
             session.run(query_index)   
             print("Overview Vector index created in Neo4j desktop")
+
+    def loadEmbeddings(self):
+        with open('movie_embeddings.pickle', 'rb') as f:
+            embedding_dict = pickle.load(f)
+        
+        # Batch size for processing embeddings
+        batch_size = 1000
+        
+        with self.driver.session() as session:
+            # Prepare the Cypher query template
+            query_template = (
+                "UNWIND $batch AS item "
+                "MATCH (m:Movie {id: toInteger(item.id)}) "
+                "SET m.embedding = item.embedding"
+            )
+        
+            # Process embeddings in batches
+            for i in range(0, len(embedding_dict), batch_size):
+                # Slice the embeddings dictionary to get a batch
+                batch = [{"id": id, "embedding": embedding} for id, embedding in embedding_dict.items()][i:i+batch_size]
+        
+                # Execute the query with the current batch
+                session.run(query_template, batch=batch)
+        
+        print("Overview Embeddings loaded to Neo4j desktop")
+        
+        try:
+            session.run("DROP INDEX overview_embeddings")
+        except:
+            print("No index to drop")
+    
+        query_index = (
+                    "CREATE VECTOR INDEX overview_embeddings "
+                    "FOR (m: Movie) ON (m.embedding) "
+                    "OPTIONS {indexConfig: { "
+                    "`vector.dimensions`: 768, "
+                    "`vector.similarity_function`: 'cosine'}}"
+                )            
+                
+        session.run(query_index)   
+        print("Overview Vector index created in Neo4j desktop")
+
             
-'Read the credentials to your database'
+# 'Read the credentials to your database'
 start = time.time()
 #Check Limits below and above
-uri, user, password = read_params_from_file(wd+"\\params.txt") 
+# uri, user, password = read_params_from_file(wd+"\\params.txt") 
+uri, user, password = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD')
+
 
 movieGraph = createGraph(uri, user, password)
 del password
- 
+
+
 reCreate = True
 others = True
 actors = True
@@ -271,7 +350,8 @@ embeddings = False
 if reCreate:
 
     movieGraph.drop_data()
-    movieGraph.load_movies_from_csv("movies_metadata.csv")#Linked to Import Folder of neo4j
+    movieGraph.createConstraint()
+    movieGraph.load_movies_from_csv("movies_metadata_clean_upd.csv")#Linked to Import Folder of neo4j
     movieGraph.load_users2()            
     
 if others:
@@ -283,8 +363,9 @@ if actors:
 if crew:
     movieGraph.crew()    
     
-if embeddings:
-    movieGraph.load_overview_embeddings()    
+# if embeddings:
+#    movieGraph.load_overview_embeddings()    
+    # movieGraph.loadEmbeddings()
     
 end = time.time()
 print("Elapsed Time : ", end - start)
