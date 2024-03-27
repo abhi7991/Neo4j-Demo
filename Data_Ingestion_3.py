@@ -18,13 +18,10 @@ from tqdm import tqdm
 import time
 import pickle
 import warnings
-from dotenv import load_dotenv
-
 warnings.filterwarnings("ignore")
 
 wd = os.getcwd()
 np.random.seed(20)
-load_dotenv()
 
 limit2 = 1000 #This is for Other nodes outside the class
 
@@ -35,6 +32,9 @@ def read_params_from_file(file_path):
 
 class createGraph:
     
+    
+
+    
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200)
 
@@ -43,11 +43,21 @@ class createGraph:
 
     def createConstraint(self):
         query1 = "CREATE CONSTRAINT unique_movie_id IF NOT EXISTS FOR (p:Movie) REQUIRE (p.id) IS NODE KEY;"
-#        query2 = "CREATE CONSTRAINT unique_movie IF NOT EXISTS FOR (p:Movie) REQUIRE (p.name) IS NODE KEY;"
+        query2 = "CREATE CONSTRAINT unique_person_id IF NOT EXISTS FOR (p:Person) REQUIRE (p.person_id) IS NODE KEY;"
+        query3 = "CREATE CONSTRAINT unique_prod_id IF NOT EXISTS FOR (p:ProductionCompany) REQUIRE (p.prod_comp_id) IS NODE KEY;"
+        query4 = "CREATE CONSTRAINT unique_genre_id IF NOT EXISTS FOR (p:Genre) REQUIRE (p.genre_id) IS NODE KEY;"
+        query5 = "CREATE CONSTRAINT unique_lang_id IF NOT EXISTS FOR (p:SpokenLanguage) REQUIRE (p.lang_id) IS NODE KEY;"
+        query6 = "CREATE CONSTRAINT unique_countries_id IF NOT EXISTS FOR (p:Country) REQUIRE (p.country_id) IS NODE KEY;"
+        query7 = "CREATE CONSTRAINT unique_user_id IF NOT EXISTS FOR (p:User) REQUIRE (p.userId) IS NODE KEY;"
+
         with self.driver.session() as session:
             session.run(query1)
-#            session.run(query2)
-
+            session.run(query2)
+            session.run(query3)
+            session.run(query4)
+            session.run(query5)
+            session.run(query6)
+            session.run(query7)
     def load_movies_from_csv(self, csv_file):
         
         '''
@@ -80,7 +90,7 @@ class createGraph:
                 "m.popularity = toFloat(coalesce(row.popularity, 0.0)), "
                 "m.revenue = toInteger(coalesce(row.revenue, 0)), "
                 "m.spoken_languages = row.spoken_languages, "
-                "m.overview = row.overview_upd, "
+                "m.overview = row.overview, "
                 "m.vote_average = toInteger(coalesce(row.vote_average, 0)), "
                 "m.vote_count = toInteger(coalesce(row.vote_count, 0));\n"
             )
@@ -90,12 +100,6 @@ class createGraph:
             session.run(query, csvFile=f'file:///{csv_file}', limit=self.limit)
             print(f"Data Uploaded to Neo4j desktop for the first {self.limit} rows")
 
-            query_create_index = "CREATE FULLTEXT INDEX movie_overview_index FOR (m:Movie) ON EACH [m.overview]"
-            session.run(query_create_index)
-#            create_index = 'CREATE INDEX id_index FOR (m:Movie) ON (m.id)'
-#            session.run(create_index)
-            
-            print("Movie Overview Indexed")
             
     limit = None            
     def drop_data(self):
@@ -120,11 +124,42 @@ class createGraph:
                 try: 
                     session.run("DROP CONSTRAINT unique_movie_id IF EXISTS;")
                 except:
-                    print("No constraint to drop")  
-                delete_data_query = (
-                        "CALL apoc.periodic.iterate("
-                        '"MATCH (n) RETURN n", "DETACH DELETE n", {batchSize: 10000});'
-                    )
+                    print("No constraint to drop : unique_movie_id")
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_person_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_person_id")  
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_prod_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_prod_id")  
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_genre_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_genre_id")  
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_lang_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_lang_id")  
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_countries_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_countries_id")                      
+
+                try: 
+                    session.run("DROP CONSTRAINT unique_user_id IF EXISTS;")
+                except:
+                    print("No constraint to drop : unique_user_id")  
+
+#                delete_data_query = (
+#                        "CALL apoc.periodic.iterate("
+#                        '"MATCH (n) RETURN n", "DETACH DELETE n", {batchSize: 10000});'
+#                    )
 #                session.run(delete_data_query)
                 query = "MATCH (n) with n limit 300 DETACH DELETE n;"
                 for i in range(1,1000):
@@ -150,70 +185,108 @@ class createGraph:
         
         limit_clause = f"LIMIT {self.limit}" if self.limit is not None else ""
         with self.driver.session() as session:        
-            session.run(
-                f"CALL apoc.periodic.iterate("
-                f"'LOAD CSV WITH HEADERS FROM \"file:///ratings_small.csv\" AS line RETURN line {limit_clause}', "
-                "'MERGE (u:User { id: TOINTEGER(line.userId) }) "
-                "SET u.userId = TOINTEGER(line.userId) "
-                "WITH u, line "
-                "MATCH (m:Movie { id: TOINTEGER(line.movieId) }) "
-                "MERGE (u)-[r:RATING { rating: TOFLOAT(line.rating) }]->(m) "
-                "RETURN COUNT(*) AS processedRows', "
-                "{ batchSize: 1000});"
-            )
+#            session.run(
+#                f"CALL apoc.periodic.iterate("
+#                f"'LOAD CSV WITH HEADERS FROM \"file:///ratings_small.csv\" AS line RETURN line {limit_clause}', "
+#                "'MERGE (u:User { id: TOINTEGER(line.userId) }) "
+#                "SET u.userId = TOINTEGER(line.userId) "
+#                "WITH u, line "
+#                "MATCH (m:Movie { id: TOINTEGER(line.movieId) }) "
+#                "MERGE (u)-[r:RATING { rating: TOFLOAT(line.rating) }]->(m) "
+#                "RETURN COUNT(*) AS processedRows', "
+#                "{ batchSize: 1000});"
+#            )
+                
+            create_user_node = """CALL apoc.periodic.iterate(
+                    'LOAD CSV WITH HEADERS FROM "file:///ratings_small.csv" AS row RETURN row', 
+                    'MERGE (pc:User {userId: TOINTEGER(row.userId)})', 
+                    { batchSize: 100}
+                ) YIELD batches, total, errorMessages;
+                """
+            create_user_relay = """CALL apoc.periodic.iterate(
+                    'LOAD CSV WITH HEADERS FROM "file:///ratings_small.csv" AS row RETURN row', 
+                        'MATCH (m:Movie {id: TOINTEGER(row.movieId)}) ' +
+                        'MATCH (pc:User {userId: TOINTEGER(row.userId)}) ' +
+                        'MERGE (pc)-[r:RATING { rating: TOFLOAT(row.rating) }]->(m) ', 
+                        { batchSize: 100}
+                    ) YIELD batches, total, errorMessages;
+                    """   
+            session.run(create_user_node)        
+            session.run(create_user_relay)
         print("Users Uploaded")        
     def loadNodes(self):    
         parameters = {"limit": f"{self.limit}" if self.limit is not None else ""}
-        create_prod_comp_query = """CALL apoc.periodic.iterate(
-              'LOAD CSV WITH HEADERS FROM "file:///normalised_production_companies.csv" AS row RETURN row', 
-              'MERGE (pc:ProductionCompany { id: row.production_companies_id}) ' +
-              'ON CREATE SET pc.name = row.name ' +
-              'WITH pc, row ' +
-              'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
-              'MERGE (m)-[:PRODUCED_BY]->(pc) ' +
-              'ON CREATE SET pc.productionMovieId = m.id', 
-              { batchSize: 100,parallel:true, concurrency:10}
-            ) YIELD batches, total, errorMessages;"""
 
-        create_genres_query = """CALL apoc.periodic.iterate(
-            'LOAD CSV WITH HEADERS FROM "file:///normalised_genres.csv" AS row RETURN row', 
-            'MERGE (g:Genre { id: row.genres_id}) ' +
-            'ON CREATE SET g.name = row.name ' +
-            'WITH g, row ' +
-            'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
-            'MERGE (m)-[:HAS_GENRE]->(g)', 
-            { batchSize: 100, parallel:true, concurrency:10 }
-        ) YIELD batches, total, errorMessages;"""
-        
-        create_spoken_languages_query = """CALL apoc.periodic.iterate(
-            'LOAD CSV WITH HEADERS FROM "file:///normalised_spoken_languages.csv" AS row RETURN row', 
-            'MERGE (sl:SpokenLanguage { id: row.spoken_languages_id}) ' +
-            'ON CREATE SET sl.name = row.name ' +
-            'WITH sl, row ' +
-            'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
-            'MERGE (m)-[:HAS_SPOKEN_LANGUAGE]->(sl)', 
-            { batchSize: 100, parallel:true, concurrency:10 }
-        ) YIELD batches, total, errorMessages;"""
-        
-        create_prod_countries_query = """CALL apoc.periodic.iterate(
-            'LOAD CSV WITH HEADERS FROM "file:///normalised_production_countries.csv" AS row RETURN row', 
-            'MERGE (pcn:ProductionCountry { id: row.production_countries_id}) ' +
-            'ON CREATE SET pcn.name = row.name ' +
-            'WITH pcn, row ' +
-            'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
-            'MERGE (m)-[:PRODUCED_IN]->(pcn)', 
-            { batchSize: 100, parallel:true, concurrency:10 }
-        ) YIELD batches, total, errorMessages;"""
+        create_prod_com_nodes = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_production_companies.csv" AS row RETURN row', 
+                'MERGE (pc:ProductionCompany {prod_comp_id: TOINTEGER(row.production_companies_id)}) ' +
+                'ON CREATE SET pc.name = row.name', 
+                { batchSize: 100}
+            ) YIELD batches, total, errorMessages;
+            """
+        create_prod_comp_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_production_companies.csv" AS row RETURN row', 
+                    'MATCH (m:Movie {id: TOINTEGER(row.id) }) ' +
+                    'MATCH (pc:ProductionCompany {prod_comp_id: TOINTEGER(row.production_companies_id)}) ' +
+                    'MERGE (pc)-[:PRODUCED_BY]->(m) ', 
+                    { batchSize: 100}
+                ) YIELD batches, total, errorMessages;
+                """
+                
+        create_genres_node = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_genres.csv" AS row RETURN row', 
+                'MERGE (pc:Genre {genre_id: TOINTEGER(row.genres_id)}) ' +
+                'ON CREATE SET pc.name = row.name', 
+                { batchSize: 100}
+            ) YIELD batches, total, errorMessages;
+            """
+        create_genres_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_genres.csv" AS row RETURN row', 
+                    'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
+                    'MATCH (pc:Genre { genre_id: TOINTEGER(row.genres_id)}) ' +
+                    'MERGE (pc)-[:Genre]->(m) ', 
+                    { batchSize: 100}
+                ) YIELD batches, total, errorMessages;
+                """
+
+        create_lang_node = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_spoken_languages.csv" AS row RETURN row', 
+                'MERGE (pc:SpokenLanguage {lang_id: row.spoken_languages_id}) ' +
+                'ON CREATE SET pc.name = row.name', 
+                { batchSize: 100}
+            ) YIELD batches, total, errorMessages;
+            """
+        create_lang_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_spoken_languages.csv" AS row RETURN row', 
+                    'MATCH (m:Movie {id: TOINTEGER(row.id)}) ' +
+                    'MATCH (pc:SpokenLanguage {lang_id: row.spoken_languages_id}) ' +
+                    'MERGE (pc)-[:LANGUAGE]->(m) ', 
+                    { batchSize: 100}
+                ) YIELD batches, total, errorMessages;
+                """        
+
+        create_country_node = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_production_countries.csv" AS row RETURN row', 
+                'MERGE (pc:Country {country_id: row.production_countries_id}) ' +
+                'ON CREATE SET pc.name = row.name', 
+                { batchSize: 100}
+            ) YIELD batches, total, errorMessages;
+            """
+        create_country_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_production_countries.csv" AS row RETURN row', 
+                    'MATCH (m:Movie {id: TOINTEGER(row.id)}) ' +
+                    'MATCH (pc:Country {country_id: row.production_countries_id}) ' +
+                    'MERGE (pc)-[:COUNTRY]->(m) ', 
+                    { batchSize: 100}
+                ) YIELD batches, total, errorMessages;
+                """   
 
         queries = [
-            create_prod_comp_query,
-            create_genres_query,
-            create_spoken_languages_query,
-            create_prod_countries_query
+                create_prod_com_nodes,create_prod_comp_relay,create_genres_node,create_genres_relay,
+                create_lang_node,create_lang_relay,create_country_node,create_country_relay
+                
         ]               
         with self.driver.session() as session:        
-#            session.run(create_prod_comp_query,parameters)
-#            session.run(create_relationships_query,parameters)   
             for query in queries:
                 session.run(query, parameters)      
             print("All Done with movies")
@@ -222,18 +295,25 @@ class createGraph:
     def actors(self):
         parameters = {"limit": f"{self.limit}" if self.limit is not None else ""}
         
+
         create_cast_query = """CALL apoc.periodic.iterate(
-            'LOAD CSV WITH HEADERS FROM "file:///normalised_cast.csv" AS row RETURN row', 
-            'MERGE (p:Person { id: row.cast_id}) ' +
-            'ON CREATE SET p.name = row.name, p.gender = row.gender, p.profile_path = row.profile_path ' +
-            'WITH p, row ' +
-            'MATCH (m:Movie { id: TOINTEGER(row.id) }) ' +
-            'MERGE (m)<-[:ACTED_IN { character: row.character, credit_id: row.credit_id, order: row.order }]-(p)', 
-            { batchSize: 100}
-        ) YIELD batches, total, errorMessages;"""
-        
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_cast2.csv" AS row RETURN row', 
+                'MERGE (p:Person {person_id: TOINTEGER(row.r_id)}) ' +
+                'ON CREATE SET p.name = row.name, p.gender = row.gender, p.profile_path = row.profile_path', 
+                { batchSize: 100 }
+            ) YIELD batches, total, errorMessages;
+                    """
+        create_cast_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_cast2.csv" AS row RETURN row', 
+                'MATCH (m:Movie {id: TOINTEGER(row.id) }) ' +
+                'MATCH (p:Person {person_id:TOINTEGER(row.r_id) }) ' +
+                'MERGE (p)-[:ACTED_IN { character: row.character, credit_id: row.credit_id, `order`: row.order }]->(m)', 
+                { batchSize: 100 }
+            ) YIELD batches, total, errorMessages;
+                        """
         with self.driver.session() as session:        
             session.run(create_cast_query, parameters)      
+            session.run(create_cast_relay, parameters)    
             print("All Done with actors")            
 
     def crew(self):
@@ -248,8 +328,27 @@ class createGraph:
             'MERGE (m)<-[:CREWED_IN { job: row.job }]-(p)', 
             { batchSize: 100, parallel:true, concurrency:10 }
         ) YIELD batches, total, errorMessages;"""
+        
+        
+        create_crew_query = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_crew.csv" AS row RETURN row', 
+                'MERGE (p:Person {person_id: TOINTEGER(row.r_id)}) ' +
+                'ON CREATE SET p.name = row.name, p.gender = row.gender', 
+                { batchSize: 100 }
+            ) YIELD batches, total, errorMessages;
+                    """
+        create_crew_relay = """CALL apoc.periodic.iterate(
+                'LOAD CSV WITH HEADERS FROM "file:///normalised_crew.csv" AS row RETURN row', 
+                'MATCH (m:Movie {id: TOINTEGER(row.id) }) ' +
+                'MATCH (p:Person {person_id:TOINTEGER(row.r_id) }) ' +
+                'MERGE (p)-[:CREWED_IN { character: row.department, credit_id: row.credit_id}]->(m)', 
+                { batchSize: 100 }
+            ) YIELD batches, total, errorMessages;
+                        """        
+        
         with self.driver.session() as session:        
-            session.run(create_crew_query, parameters)      
+            session.run(create_crew_query, parameters)  
+            session.run(create_crew_relay, parameters)
             print("All Done with Crew")            
 
     def load_overview_embeddings(self):
@@ -331,18 +430,15 @@ class createGraph:
         print("Overview Vector index created in Neo4j desktop")
 
             
-# 'Read the credentials to your database'
+'Read the credentials to your database'
 start = time.time()
 #Check Limits below and above
-# uri, user, password = read_params_from_file(wd+"\\params.txt") 
-uri, user, password = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD')
-
+uri, user, password = read_params_from_file(wd+"\\params.txt") 
 
 movieGraph = createGraph(uri, user, password)
 del password
-
-
 reCreate = True
+users = True
 others = True
 actors = True
 crew = True 
@@ -351,7 +447,9 @@ if reCreate:
 
     movieGraph.drop_data()
     movieGraph.createConstraint()
-    movieGraph.load_movies_from_csv("movies_metadata_clean_upd.csv")#Linked to Import Folder of neo4j
+    movieGraph.load_movies_from_csv("movies_metadata_clean.csv")#Linked to Import Folder of neo4j
+
+if users:
     movieGraph.load_users2()            
     
 if others:
@@ -363,16 +461,8 @@ if actors:
 if crew:
     movieGraph.crew()    
     
-# if embeddings:
+if embeddings:
 #    movieGraph.load_overview_embeddings()    
-    # movieGraph.loadEmbeddings()
-    
+    movieGraph.loadEmbeddings()
 end = time.time()
 print("Elapsed Time : ", end - start)
-#   
-#modify the queries based on the conditions below and change the relationships as well? 
-
-#['id', 'production_companies_id', 'name'] - normalised_production_companies.csv
-#['id', 'genres_id', 'name'], dtype='object') -  normalised_genres.csv
-#['id', 'spoken_languages_id', 'name'] - normalised_spoken_languages.csv
-#['id', 'production_countries_id', 'name'] - normalised_production_countries
