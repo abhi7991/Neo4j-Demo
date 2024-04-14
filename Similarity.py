@@ -510,9 +510,47 @@ df = pd.read_csv(wd2+"normalised_crew.csv")
 a = df.head(10)
 b = df[(df['name']=='Tom Hanks')]
 #%%
-df = pd.read_csv(wd2+"normalised_production_countries.csv")
+df = pd.read_csv(wd2+"ratings.csv")
 
+
+#b = df[(df['name']=='Tom Hanks')]
+print("TOTAL ROWS IN MAIN FILE : ", len(df))
+print("UNIQUE USERS IN MAIN FILE : ",len(df.iloc[:,0].unique()))
+print("UNIQUE MOVIES IN MAIN FILE : ",len(df.iloc[:,1].unique()))
+
+a = df.groupby(['userId'])['movieId'].count().reset_index()
+b = df.groupby(['movieId'])['userId'].count().reset_index()
+#%%
+b = df.groupby(['movieId']).head(1000)
+b.to_csv(wd2+"clean_ratings.csv",index=False)
+#%%
+a = a.sort_values('movieId',ascending=False)
+num_movies_rated = df.groupby('userId')['movieId'].count()
+import matplotlib.pyplot as plt
+# Plotting
+plt.figure(figsize=(10, 6))
+plt.hist(num_movies_rated, bins=50, color='skyblue', edgecolor='black')  # Adjust the number of bins as needed
+plt.xlabel('Number of Movies Rated')
+plt.ylabel('Number of Users')
+plt.title('Distribution of the Number of Movies Rated by Users')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+#%%
+df = pd.read_csv(wd2+"ratings_small.csv")
+print("")
 a = df.head(10)
-b = df[(df['name']=='Tom Hanks')]
-
-
+#b = df[(df['name']=='Tom Hanks')]
+print("TOTAL ROWS IN SMALL FILE : ", len(df))
+print("UNIQUE USERS IN SMALL FILE : ",len(df.iloc[:,0].unique()))   
+print("UNIQUE MOVIES IN SMALL FILE : ",len(df.iloc[:,1].unique()))
+#%%
+# Plotting
+plt.figure(figsize=(10, 6))
+df['rating'].hist(bins=10, color='skyblue', edgecolor='black')  # Adjust the number of bins as needed
+plt.xlabel('Rating')
+plt.ylabel('Frequency')
+plt.title('Distribution of Ratings Given by Users')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
