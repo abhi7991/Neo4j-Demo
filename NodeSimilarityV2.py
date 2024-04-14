@@ -16,18 +16,15 @@ import os
 import time
 from graphdatascience import GraphDataScience
 wd = os.getcwd()
+from dotenv import load_dotenv
+load_dotenv()
 
-def read_params_from_file(file_path):
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-        return [line.strip() for line in lines]   
-database = 'movies.main'    
 
-uri, user, password = read_params_from_file(wd+"\\params.txt") 
-driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200, database = database)
+database = os.environ.get('NEO4J_DATABASE')
+driver = GraphDatabase.driver(os.environ.get('NEO4J_URI'), auth=(os.environ.get('NEO4J_USERNAME'), os.environ.get('NEO4J_PASSWORD')), max_connection_lifetime=200, database = database)
 gds = GraphDataScience(
-    uri,
-    auth = (user, password),database = database
+    os.environ.get('NEO4J_URI'),
+    auth = (os.environ.get('NEO4J_USERNAME'),os.environ.get('NEO4J_PASSWORD')),database = database
 )       
 
 del1 = "CALL gds.graph.drop('movies2');"
