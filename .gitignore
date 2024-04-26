@@ -11,4 +11,13 @@ movies_metadata.csv
 credits.csv
 ratings.csv
 raings_small.csv
-
+delete
+modules/__pycache__
+__pycache__
+modules/chatbot.ipynb
+langchain-tools.ipynb
+helper_modules
+data/.DS_Store
+data
+.DS_Store
+modules/.DS_Store
