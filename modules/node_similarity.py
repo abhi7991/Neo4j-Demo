@@ -15,28 +15,33 @@ from neo4j import GraphDatabase
 import os
 import time
 from graphdatascience import GraphDataScience
+from langchain_core.tools import tool
+from pydantic.v1 import BaseModel, Field
+
 wd = os.getcwd()
 
 def read_params_from_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
         return [line.strip() for line in lines]   
-database = 'movies.main'    
+# database = 'movies.main'    
 
-uri, user, password = read_params_from_file(wd+"\\params.txt") 
-driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200, database = database)
+# uri, user, password = read_params_from_file(wd+"\\params.txt") 
+uri, user, password = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD')
+driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200)
 gds = GraphDataScience(
     uri,
-    auth = (user, password),database = database
+    auth = (user, password)
 )       
 
-del1 = "CALL gds.graph.drop('movies2');"
-del2 = "CALL gds.graph.drop('movies3');"
+del1 = "CALL gds.graph.drop('movies2',false);"
+del2 = "CALL gds.graph.drop('movies3',false);"
 
 
 gds.run_cypher(del1)
 gds.run_cypher(del2)
 
+## Subgraph1 - All the attributes, incoming towards Movies
 query1 = """CALL gds.graph.project('movies2', 
               ['Movie','Genre','User','Person','SpokenLanguage','ProductionCompany','Country'], 
               {RATING:{properties:'rating',orientation:'REVERSE'},
@@ -52,6 +57,7 @@ query1 = """CALL gds.graph.project('movies2',
 a = gds.run_cypher(query1)
 print(a)
 
+## Subgraph2 - Outwards from movies, default directions
 query2 = """CALL gds.graph.project('movies3', 
               ['Movie','Genre','User','Person','ProductionCompany'], 
               {RATING:{properties:'rating'},
@@ -59,16 +65,40 @@ query2 = """CALL gds.graph.project('movies3',
               ACTED_IN:{},
               CREWED_IN:{}, PRODUCED_BY:{}}  
             );"""
+            
 a = gds.run_cypher(query2)
 print(a)
 
-def getSimilar(entity,sim_type=''):
+## Entity - To find similar nodes around
+## relationship - relationship or basis of recommendation
+ #Similar movies based on user rating
+    #Similar movies based on Genre
+    #Find Movies based on similar actors    
+    #Find Similar Personalities to a director 
+    #Find Similar Actors      
+    #Find Non-Similar Actors  
+    #Find Movies based on Production Company   
+    #Find Similar Movies by Region   
+    #Find Similar Movies by Language   
+    #Find a director an actor should work with ? 
+    #General if relationship is None 
     
+class SearchInput(BaseModel):
+    entity: str = Field(...,description="Entity name")
+    relationship: str = Field(...,description="Basis of recommendation around which similarity needs to be found. It would be only out of these options - user ratings,actor,genre,director,similar actor,nonsimilar actor,production house,country,language,work or country language")
+    
+    
+    
+@tool(args_schema=SearchInput)
+def getSimilar(entity: str,relationship:str='') -> list: 
+    """
+    Recommend similar entities likes Movies, Actors, directors based on some relationship like user ratings, genres, production houses or other similar entities
+    """
     
     #Similar movies based on user rating
-    if sim_type.lower()=='user':
+    if relationship.lower()=='user rating':
         node = """
-        MATCH (m:entity)
+        MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
         WITH id(m) AS sourceNodeId
         CALL gds.nodeSimilarity.filtered.stream('movies2',{
@@ -78,11 +108,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter:'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """        
     #Similar movies based on Genre
-    elif sim_type.lower()=='genre':
+    elif relationship.lower()=='genre':
         node = """
         MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -94,11 +124,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter:'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """     
     #Find Movies based on similar actors    
-    elif sim_type.lower()=='actor':
+    elif relationship.lower()=='actor':
         node = """
         MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -110,11 +140,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter:'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """  
     #Find Similar Personalities to a director    
-    elif sim_type.lower()=='director':
+    elif relationship.lower()=='director':
         node = """
         MATCH (m:Movie)<-[c:CREWED_IN{character:'Directing'}]-(p:Person)
         WHERE tolower(m.name) = '""" + entity.lower() + """'
@@ -126,11 +156,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter: 'Person'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """        
     #Find Similar Actors    
-    elif sim_type.lower()=='similar actor':
+    elif relationship.lower()=='similar actor':
         node = """
         MATCH (p:Person)
         WHERE tolower(p.name) = '""" + entity.lower() + """'
@@ -143,11 +173,11 @@ def getSimilar(entity,sim_type=''):
             topk:20
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """      
     #Find Non-Similar Actors      
-    elif sim_type.lower()=='nonsimilar actor':
+    elif relationship.lower()=='nonsimilar actor':
         node = """
         MATCH (p:Person)
         WHERE tolower(p.name) = '""" + entity.lower() + """'
@@ -160,11 +190,11 @@ def getSimilar(entity,sim_type=''):
             bottomk:20
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """
     #Find Movies based on Production Company   
-    elif sim_type.lower()=='production_house':
+    elif relationship.lower()=='production house':
         node = """
        MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -176,11 +206,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter: 'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """  
     #Find Similar Movies by Region   
-    elif sim_type.lower()=='country':
+    elif relationship.lower()=='country':
         node = """
        MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -192,11 +222,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter: 'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """        
     #Find Similar Movies by Language   
-    elif sim_type.lower()=='language':
+    elif relationship.lower()=='language':
         node = """
        MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -208,11 +238,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter: 'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """                        
     #Find Similar Movies by Region and Language?   
-    elif sim_type.lower()=='geography':
+    elif relationship.lower()=='country language':
         node = """
        MATCH (m:Movie)
         WHERE tolower(m.name) = '"""+entity.lower()+"""'
@@ -224,11 +254,11 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter: 'Movie'
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2        
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2        
         """
     #Find Actors who have the worked the most with a director?   
-    elif sim_type.lower()=='work':
+    elif relationship.lower()=='work':
         node = """
         MATCH (p:Person)
         WHERE tolower(p.name) = '""" + entity.lower() + """'
@@ -241,10 +271,10 @@ def getSimilar(entity,sim_type=''):
             topk:20
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """
-    #General if sim_type is None       
+    #General if relationship is None       
     else:
         node = """
         MATCH (m:Movie)
@@ -257,25 +287,16 @@ def getSimilar(entity,sim_type=''):
             targetNodeFilter:'Movie'      
         })
         YIELD node1, node2, similarity
-        RETURN gds.util.asNode(node1).name AS Person1, gds.util.asNode(node2).name AS Person2, similarity
-        ORDER BY similarity DESCENDING, Person1, Person2
+        RETURN gds.util.asNode(node1).name AS Entity1, gds.util.asNode(node2).name AS Entity2, similarity
+        ORDER BY similarity DESCENDING, Entity1, Entity2
         """        
-    print(node)
-    return gds.run_cypher(node)    
-'''
+    # print(node)
+    
+    x = gds.run_cypher(node)
+    
+    x_list = x['Entity2'].head().tolist()
+    
+    return x_list
 
-#Similar movies based on user rating
-#Similar movies based on Genre
-#Find Movies based on similar actors    
-#Find Similar Personalities to a director 
-#Find Similar Actors      
-#Find Non-Similar Actors  
-#Find Movies based on Production Company   
-#Find Similar Movies by Region   
-#Find Similar Movies by Language   
-#Find a director an actor should work with ? 
-#General if sim_type is None 
-'''
 
-df1 = getSimilar("harrison ford",'work')
-#%%
+# df1 = getSimilar("harrison ford",'work')
