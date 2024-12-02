@@ -17,21 +17,23 @@ import time
 from graphdatascience import GraphDataScience
 from langchain_core.tools import tool
 from pydantic.v1 import BaseModel, Field
-
+from dotenv import load_dotenv
 wd = os.getcwd()
+load_dotenv(override=True)
 
 def read_params_from_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
         return [line.strip() for line in lines]   
-# database = 'movies.main'    
-
+        
+database = 'neo4j'    
 # uri, user, password = read_params_from_file(wd+"\\params.txt") 
 uri, user, password = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD')
 driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200)
+
 gds = GraphDataScience(
     uri,
-    auth = (user, password)
+    auth = (user, password), database=database
 )       
 
 del1 = "CALL gds.graph.drop('movies2',false);"
@@ -85,7 +87,7 @@ print(a)
     
 class SearchInput(BaseModel):
     entity: str = Field(...,description="Entity name")
-    relationship: str = Field(...,description="Basis of recommendation around which similarity needs to be found. It would be only out of these options - user ratings,actor,genre,director,similar actor,nonsimilar actor,production house,country,language,work or country language")
+    relationship: str = Field(...,description="When a user mentions the word similarity or similar - Basis of recommendation around which similarity needs to be found. It would be only out of these options - user ratings,actor,genre,director,similar actor,nonsimilar actor,production house,country,language,work or country language")
     
     
     

@@ -5,13 +5,14 @@
 # CineSphere
 Movie recommendations using Knowledge Graphs and LLMs
 
-> [Codelabs Documentation](https://codelabs-preview.appspot.com/?file_id=1KAzKlqQ-GWZW9tSMoI07RWoFs0BkJ88tIaO6z5QGpnY#8)<br>
+> [Technical Presentation](CineSphere%20-%20Presentation.pptx)<br>
+> [Technical Documentation](other%20files/CineSphere%20-%20Technical%20Documentation.pdf)<br>
+> [About Me - Abhishek](Abhishek%20Shankar%20-%20About%20Me.pptx)<br>
 
 ## Introduction 
 
 
-CineSphere is your one stop shot at helping you narrow down on your entertainment needs. The crux of our product is the ability to provide 
-users with the best of world cinema while also catering to their every query surrounding their favorite celebrities. Some of the features available on the 
+CineSphere is your ultimate destination for discovering world-class entertainment. Our platform not only brings you the best of global cinema but also answers all your questions about your favorite movies, actors, and celebrities. Some of the features available on the 
 product are. 
 
 - Interactive User Interface and experience
@@ -26,8 +27,7 @@ product are.
 
 ## Implementation
 
-1. Recommendation - CineSphere uses the Node Similarity which is available through Neo4j's Graph Data Science plugin. Users will be allowed to signup and be produced
-a set of movies. Upon selecting the movies the graph will capture all relationships and start running a similarity algorithm. The more the user interacts with the recommendation
+1. Recommendation - CineSphere uses the Node Similarity which is available through Neo4j's Graph Data Science plugin. Users will be allowed to signup and be produced a set of movies. Upon selecting the movies the graph will capture all relationships and start running a similarity algorithm. The more the user interacts with the recommendation
 the better results they will be able to get. 
 
 2. Similarity - The number of questions which might pop up while watching a movie like information regarding the cast or having a debate about an actors movie. Well we got you covered. The product leverages the similarity between the various movie nodes and the interaction of the genres, users, actors and crew members around the movie nodes. The app does this on the fly and can be accessed through the chat bot. For this functionality CineSphere uses Neo4j's graph data science.

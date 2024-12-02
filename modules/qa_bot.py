@@ -10,13 +10,13 @@ from langchain_core.tools import tool
 from pydantic.v1 import BaseModel, Field
 
 
-load_dotenv()# username is neo4j by default
+load_dotenv(override=True)
 
 
 NEO4J_USERNAME = os.getenv('NEO4J_USER')
 NEO4J_URI = os.getenv('NEO4J_URI')
 NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD')
-
+DATABASE = os.getenv('NEO4J_DATABASE')
 CYPHER_GENERATION_TEMPLATE = """You are an expert Neo4j Cypher translator who understands the question in english and convert to Cypher strictly based on the Neo4j Schema provided and following the instructions below:
 <instructions>
 * Use aliases to refer the node or relationship in the generated Cypher query
@@ -36,13 +36,13 @@ Strictly use this Schema for Cypher generation:
 The samples below follow the instructions and the schema mentioned above. So, please follow the same when you generate the cypher:
 <samples>
 Human: Which actors have most movies? What is the total number of movies they acted in ?
-Assistant: ```MATCH (p:Person) -[a:ACTED_IN]-> (m:Movie) RETURN p.name as Actor, count(distinct m) as totalmovies ORDER BY totalmovies DESC LIMIT 10```
+Assistant: ```MATCH (p:Person) -[a:ACTED_IN]->(m:Movie) RETURN p.name as Actor, count(distinct m) as totalmovies ORDER BY totalmovies DESC LIMIT 10```
 
 Human: Which 5 production houses produced most movies? How many movies?
-Assistant: ```MATCH (c:ProductionCompany)<-[:PRODUCED_BY]-(m:Movie) WITH c.name as ProductionHouse, count(m) AS numMovies RETURN ProductionHouse, numMovies ORDER BY numMovies DESC LIMIT 5;```
+Assistant: ```MATCH (c:ProductionCompany)-[:PRODUCED_BY]->(m:Movie) WITH c.name as ProductionHouse, count(m) AS numMovies RETURN ProductionHouse, numMovies ORDER BY numMovies DESC LIMIT 5;```
 
 Human: What are the top 10 grossing movies for Warner Bros.?
-Assistant: ```MATCH (c:ProductionCompany)<-[:PRODUCED_BY]-(m:Movie) WHERE toLower(c.name) CONTAINS "warner bros." RETURN DISTINCT c.name AS ProductionHouse, m.name AS Movies, m.revenue AS Revenue ORDER BY Revenue DESC LIMIT 10;```
+Assistant: ```MATCH (c:ProductionCompany)-[:PRODUCED_BY]->(m:Movie) WHERE toLower(c.name) CONTAINS "warner bros." RETURN DISTINCT c.name AS ProductionHouse, m.name AS Movies, m.revenue AS Revenue ORDER BY Revenue DESC LIMIT 10;```
 
 Human: Which 5 actor pairs did most movies by Warner Bros together?
 Assistant: ```MATCH (:ProductionCompany {{name: 'Warner Bros.'}})<-[:PRODUCED_BY]-(m:Movie)<-[:ACTED_IN]-(a1:Person) WITH m, a1 MATCH (m)<-[:ACTED_IN]-(a2:Person) WHERE id(a1) < id(a2) RETURN a1.name AS Actor1, a2.name AS Actor2, count(DISTINCT m) AS SharedMovies ORDER BY SharedMovies DESC LIMIT 5```
@@ -52,6 +52,9 @@ Assistant: ```MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre) RETURN g.name as Genre, co
 
 Human: Who directed Inception?
 Assistant: ```MATCH (p:Person)-[:CREWED_IN {{character: 'Directing'}}]->(m:Movie {{name: 'Inception'}}) RETURN p.name as Director```
+
+Human: Give me the plot or story of the movie Forrest Gump?
+Assistant: ```MATCH (m:Movie {{name: 'Forrest Gump'}}) RETURN m.overview as Plot```
 
 </samples>
 
@@ -69,7 +72,8 @@ CYPHER_GENERATION_PROMPT = PromptTemplate(
 graph = Neo4jGraph(
     url=NEO4J_URI, 
     username=NEO4J_USERNAME, 
-    password=NEO4J_PASSWORD
+    password=NEO4J_PASSWORD,
+    database = DATABASE
 )
 
 llm = ChatOpenAI(temperature=0,openai_api_key=os.getenv('OPENAI_API_KEY'))
@@ -83,7 +87,7 @@ chain = GraphCypherQAChain.from_llm(
 )
 
 class SearchInput(BaseModel):
-    que: str = Field(...,description="this would be question by the user about movies,actors,and other attributres related to movies it will be used to query but not for recommendation")
+    que: str = Field(...,description="this would be question by the user about what the movies are, who are the actors acting ,what the plot of a movie is ,and other attributres related to movies it will be used to query but not for recommendation")
     
     
     

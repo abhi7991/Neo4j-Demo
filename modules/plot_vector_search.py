@@ -4,16 +4,18 @@ from graphdatascience import GraphDataScience
 from langchain_core.tools import tool
 from pydantic.v1 import BaseModel, Field
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 
+        
+# uri, user, password = read_params_from_file(wd+"\\params.txt") 
+uri, user, password,database = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD'), os.getenv('NEO4J_DATABASE')
 gds = GraphDataScience(
-    os.getenv('NEO4J_URI'),
-    auth = (os.getenv('NEO4J_USER'),os.getenv('NEO4J_PASSWORD'))
+    uri,
+    auth = (user, password), database=database
 )       
-
 class SearchInput(BaseModel):
-    question: str = Field(...,description="The question asked by the user related to either the plot or genre of the movie. It essentially would not have enties or names, but just a general statement or question about the movie's plot")
+    question: str = Field(...,description="The question is based on a user's sentiment of what he wants to watch. The user will not ask about the plot or the story of a film. It essentially would not have enties or names, but just a general statement or question surrounding the movies description")
         
 @tool(args_schema=SearchInput)
 def vectorSearch(question: str) -> list:

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt    
 import pandas as pd
 from neo4j import GraphDatabase
+import sys
+
 import os
 import requests
 import json
@@ -8,9 +10,13 @@ import requests
 import numpy as np
 from graphdatascience import GraphDataScience
 wd = os.getcwd()
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dotenv import load_dotenv
-# import graph_build,create_plot_embeddings
-from modules import node_similarity,qa_bot,plot_vector_search
+from . import graph_build,create_plot_embeddings
+#Uncomment
+from modules import node_similarity,qa_bot,plot_vector_search 
 import openai
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
@@ -24,22 +30,23 @@ from langchain.agents.format_scratchpad import format_to_openai_functions
 from langchain.agents import AgentExecutor
 
 
-load_dotenv()
+load_dotenv(override=True)
 
 openai.api_key = os.environ['OPENAI_API_KEY']
+database = 'neo4j' 
+uri, user, password = os.getenv('NEO4J_URI'), os.getenv('NEO4J_USER'), os.getenv('NEO4J_PASSWORD')
 
-driver = GraphDatabase.driver(os.environ.get('NEO4J_URI'), auth=(os.environ.get('NEO4J_USER'), os.environ.get('NEO4J_PASSWORD')), max_connection_lifetime=200)
 gds = GraphDataScience(
-    os.environ.get('NEO4J_URI'),
-    auth = (os.environ.get('NEO4J_USER'),os.environ.get('NEO4J_PASSWORD'))
-)  
+    uri,
+    auth = (user, password), database=database
+)       
 
-# def graph_intit():
-#     '''
-#     One time process - Incase starting from scratch use this to create graph, and embeddings for plot
-#     '''
-#     graph_build.create_movie_graph()
-#     create_plot_embeddings.create_plot_embeddings()
+def graph_intit():
+    '''
+    One time process - Incase starting from scratch use this to create graph, and embeddings for plot
+    # '''
+    graph_build.create_movie_graph()
+    create_plot_embeddings.create_plot_embeddings()
     
    
 def chat_bot(query):
@@ -124,27 +131,39 @@ def check_user(email):
         return False
     
     
-def get_sample_movies():
+def get_sample_movies(email):
     '''
     Top Movies based on the users who have interacted with the genres and popularity of the
     movies inside the Genres
     '''
 
     query = """MATCH (g:Genre)-[:GENRE]->(m:Movie)<-[:RATING]-(u:User)
-        WITH g, COUNT(DISTINCT u) AS user_count
-        ORDER BY user_count DESC
-        LIMIT 10
-        MATCH (genre:Genre {name: g.name})-[:GENRE]->(movie:Movie)
-        WITH genre.name AS Genre, movie.name AS TopMovies, movie.popularity AS Popularity,movie.id as movieId
-        ORDER BY genre.name, Popularity DESC
-        WITH Genre , COLLECT({movieName:TopMovies, popularity: Popularity,movieId:movieId})[0..10] as genreMovies
-        return Genre, genreMovies
-        LIMIT 10;"""
-
-    df = pd.concat([pd.DataFrame(x) for x in gds.run_cypher(query).iloc[:,1]])
+            WITH g, COUNT(DISTINCT u) AS user_count
+            ORDER BY user_count DESC
+            LIMIT 10
+            MATCH (genre:Genre {name: g.name})-[:GENRE]->(movie:Movie)
+            WHERE NOT EXISTS {
+                MATCH (movie)<-[:RATING]-(user:User {email: $email})
+            }
+            WITH genre.name AS Genre, movie.name AS TopMovies, movie.popularity AS Popularity, movie.id AS movieId
+            ORDER BY genre.name, Popularity DESC
+            WITH Genre, COLLECT({movieName: TopMovies, popularity: Popularity, movieId: movieId})[0..10] AS genreMovies
+            RETURN Genre, genreMovies
+            LIMIT 10;
+            """
+    params = {"email": email}
+    df = pd.concat([pd.DataFrame(x) for x in gds.run_cypher(query,params).iloc[:,1]])
     df.drop_duplicates('movieId',inplace=True)
     df = df.sample(n=50, random_state=42)  # Adjust `n` as needed, and `random_state` for reproducibility
     return df
+
+
+def resetRecommendation(email,password):
+    
+    query = "MATCH (u:User {email: $email, password:$password})-[r]-() DELETE r"
+    params = {"email":email, "password":password}
+    
+    gds.run_cypher(query, params = params)    
 
 
 def getImage(movieId):
@@ -152,13 +171,13 @@ def getImage(movieId):
     '''
     Get Images using the TMDB API
     '''
-    
-    url = f"https://api.themoviedb.org/3/movie/{movieId}/images"    
+    #url = f"https://api.themoviedb.org/3/movie/{movieId}/images"+"?api_key=1a23dabc3e8f21345d6e1efb8b47db48"    
+    url = f"https://api.themoviedb.org/3/movie/{movieId}/images"+"?api_key="+os.getenv('MOVIE_API_KEY')    
     headers = {
         "accept": "application/json",
-        "Authorization": "Bearer "+os.environ.get('MOVIE_API_TOKEN')
+        "Authorization": "Bearer "+os.getenv('MOVIE_API_TOKEN')
     }    
-    response = requests.get(url, headers=headers)    
+    response = requests.get(url) 
     vals = json.loads(response.text)['posters']    
     vals = ['http://image.tmdb.org/t/p/w185/' + x['file_path'] if x['iso_639_1']=='en' else 'http://image.tmdb.org/t/p/w185/' + x['file_path'] for x in vals]
     return vals[0]
@@ -188,8 +207,8 @@ def generate_recommendations(email,password):
     del1 = "CALL gds.graph.drop('users',false);"
     gds.run_cypher(del1)
     query1 = """CALL gds.graph.project('users', 
-                ['Movie','User','Genre'], 
-                {RATING:{properties:'rating',orientation:'reverse'},GENRE:{orientation:'reverse'}}
+                ['Movie','User','Genre','Person'], 
+                {RATING:{properties:'rating',orientation:'reverse'},GENRE:{orientation:'reverse'},ACTED_IN:{orientation:'reverse'}, CREWED_IN:{orientation:'reverse'}}
                 );"""
 
     gds.run_cypher(query1)    
@@ -198,7 +217,7 @@ def generate_recommendations(email,password):
             WITH collect(id(m)) AS sourceNodeId
             CALL gds.nodeSimilarity.filtered.stream('users',{
                 nodeLabels:['Movie','User','Genre','Person'],
-                relationshipTypes:['RATING','GENRE','ACTED_IN','CREWED_IN],
+                relationshipTypes:['RATING','GENRE','ACTED_IN','CREWED_IN'],
                 sourceNodeFilter: sourceNodeId,
                 targetNodeFilter:'Movie'
             })

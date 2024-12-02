@@ -21,7 +21,7 @@ import warnings
 from dotenv import load_dotenv
 warnings.filterwarnings("ignore")
 
-load_dotenv()
+load_dotenv(override=True)
 
 wd = os.getcwd()
 np.random.seed(20)
@@ -37,10 +37,11 @@ class createGraph:
     
     
 
-    
+
     def __init__(self, uri, user, password):
         # database = 'movies.main'
         self.driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=200)
+        self.limit = 1000
 
     def close(self):
         self.driver.close()
@@ -163,11 +164,6 @@ class createGraph:
                 except:
                     print("No constraint to drop : unique_user_id")  
 
-#                delete_data_query = (
-#                        "CALL apoc.periodic.iterate("
-#                        '"MATCH (n) RETURN n", "DETACH DELETE n", {batchSize: 10000});'
-#                    )
-#                session.run(delete_data_query)
                 try:    
                     query = "MATCH (n) with n limit 30000 DETACH DELETE n;"
                     for i in range(1,100):
@@ -202,7 +198,7 @@ class createGraph:
             create_user_node = """CALL apoc.periodic.iterate(
                     'LOAD CSV WITH HEADERS FROM "file:///clean_ratings.csv" AS row RETURN row', 
                     'MERGE (pc:User {userId: TOINTEGER(row.userId)})', 
-                    { batchSize: 100}
+                    { batchSize: 100, limit: 1000}
                 ) YIELD batches, total, errorMessages;
                 """
             create_user_relay = """CALL apoc.periodic.iterate(
@@ -210,7 +206,7 @@ class createGraph:
                         'MATCH (m:Movie {id: TOINTEGER(row.movieId)}) ' +
                         'MATCH (pc:User {userId: TOINTEGER(row.userId)}) ' +
                         'MERGE (pc)-[r:RATING { rating: TOFLOAT(row.rating) }]->(m) ', 
-                        { batchSize: 100}
+                        { batchSize: 100, limit:1000}
                     ) YIELD batches, total, errorMessages;
                     """   
             session.run(create_user_node)        
@@ -372,84 +368,6 @@ class createGraph:
             session.run(create_crew_relay, parameters)
             print("All Done with Crew")            
 
-    def load_overview_embeddings(self):
-        
-        with open('movie_embeddings.pickle', 'rb') as f:
-                embedding_dict = pickle.load(f)
-        
-        with self.driver.session() as session:
-            for idx, (id, embedding) in tqdm(enumerate(embedding_dict.items())):
-                # Set your desired limit, for example, 100
-#                idx = {False} if self.limit is not None else true)
-                idx1 = {False} if self.limit is not None else True
-                if idx1:            
-                    if idx >= self.limit:
-                        break
-                query = (
-                    "MATCH (m:Movie {id: toInteger($movieId)}) "
-                    "CALL db.create.setNodeVectorProperty(m, 'embedding', $embedding) "
-                )                 
-                session.run(query, movieId=id, embedding=embedding) 
-            
-            print("Overview Embeddings loaded to Neo4j desktop")
-            
-#            try:
-#                session.run("DROP INDEX overview_embeddings")
-#            except:
-#                print("No index to drop")
-#        
-#            query_index = (
-#                        "CREATE VECTOR INDEX overview_embeddings "
-#                        "FOR (m: Movie) ON (m.embedding) "
-#                        "OPTIONS {indexConfig: { "
-#                        "`vector.dimensions`: 768, "
-#                        "`vector.similarity_function`: 'cosine'}}"
-#                    )            
-#                    
-#            session.run(query_index)   
-#            print("Overview Vector index created in Neo4j desktop")
-
-    def loadEmbeddings(self):
-        with open('movie_embeddings.pickle', 'rb') as f:
-            embedding_dict = pickle.load(f)
-        
-        # Batch size for processing embeddings
-        batch_size = 1000
-        
-        with self.driver.session() as session:
-            # Prepare the Cypher query template
-            query_template = (
-                "UNWIND $batch AS item "
-                "MATCH (m:Movie {id: toInteger(item.id)}) "
-                "SET m.embedding = item.embedding"
-            )
-        
-            # Process embeddings in batches
-            for i in range(0, len(embedding_dict), batch_size):
-                # Slice the embeddings dictionary to get a batch
-                batch = [{"id": id, "embedding": embedding} for id, embedding in embedding_dict.items()][i:i+batch_size]
-        
-                # Execute the query with the current batch
-                session.run(query_template, batch=batch)
-        
-        print("Overview Embeddings loaded to Neo4j desktop")
-        
-        try:
-            session.run("DROP INDEX overview_embeddings")
-        except:
-            print("No index to drop")
-    
-        query_index = (
-                    "CREATE VECTOR INDEX overview_embeddings "
-                    "FOR (m: Movie) ON (m.embedding) "
-                    "OPTIONS {indexConfig: { "
-                    "`vector.dimensions`: 768, "
-                    "`vector.similarity_function`: 'cosine'}}"
-                )            
-                
-        session.run(query_index)   
-        print("Overview Vector index created in Neo4j desktop")
-    
     def loadKeyword(self):
         with self.driver.session() as session:
             # Prepare the Cypher query template

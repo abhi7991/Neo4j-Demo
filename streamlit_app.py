@@ -12,8 +12,7 @@ from openai import OpenAI
 # import numpy as np
 
 
-load_dotenv()
-
+load_dotenv(override=True)
 is_logged_in = False
 
 if 'is_logged_in' not in st.session_state:
@@ -90,7 +89,24 @@ def home_page():
     # Set background image
     # st.markdown(f'<style>body{{background-image: url({home_bg}); background-size: cover;}}</style>', unsafe_allow_html=True)
     st.markdown("# CineSphere")
+    st.subheader("Welcome! Here are our new additions:")
+    df = utils.get_sample_movies(st.session_state['email']).head(10)
+    df['posterLink'] = df['movieId'].apply(lambda x : utils.getImage(x))
+    
+    num_cols = 5
+    cols = st.columns(num_cols)
+    
+    selected_movies = []
+    selected_movie_ids = []
+    
+    # Layout for displaying images in a grid
+    cols_per_row = 5  # Number of images per row
+    cols = st.columns(cols_per_row)
 
+    # Display images
+    for i, (_, row) in enumerate(df.iterrows()):
+        with cols[i % cols_per_row]:  # Use modulo to distribute images across columns
+            st.image(row['posterLink'], use_column_width=True)
     # Create a menu with the options
     # menu = ["Home", "Login", "Signup"]
     # choice = st.sidebar.selectbox("Select an option", menu)
@@ -146,7 +162,7 @@ def onboarding_page():
     st.subheader('Onboarding! 🎥')
     st.text('Please select your favorite movies to get started! 🍿🎬🎥')
     
-    df = utils.get_sample_movies()
+    df = utils.get_sample_movies(st.session_state['email'])
     df['posterLink'] = df['movieId'].apply(lambda x : utils.getImage(x))
     
     num_cols = 5
@@ -172,31 +188,114 @@ def onboarding_page():
             utils.save_preferences(selected_movie_ids,st.session_state['email'],st.session_state['password'])
             st.write("Preferences saved successfully! Check your recommendations on the next page! 🎉")
 
+
 def recommendations_page():
-    
     st.markdown("# CineSphere")
     st.subheader('Recommendations! 🎥')
     st.text('Here are some movies you might like! 🍿')
-    
-    similarity = utils.generate_recommendations(st.session_state['email'],st.session_state['password'])
-    # Split the DataFrame into buckets of size 10
-    buckets = np.array_split(similarity, len(similarity) // 10)
 
-    if 'current_bucket_index' not in st.session_state:
-        st.session_state.current_bucket_index = 0
-    
-    current_bucket = buckets[st.session_state.current_bucket_index]
+    # Generate recommendations
+    try:
+        similarity = utils.generate_recommendations(st.session_state['email'], st.session_state['password'])
+        # Split the DataFrame into buckets of size 10
+        buckets = np.array_split(similarity, len(similarity) // 10)
+
+        if 'current_bucket_index' not in st.session_state:
+            st.session_state.current_bucket_index = 0
         
-    cols = st.columns(5)
-    for i, (_, row) in enumerate(current_bucket.iterrows()):
-        with cols[i % 5]:
-            st.image(row['posterLink'], use_column_width=True)
-            st.write(row['Movie2'])
+        current_bucket = buckets[st.session_state.current_bucket_index]
+            
+        cols = st.columns(5)
+        for i, (_, row) in enumerate(current_bucket.iterrows()):
+            with cols[i % 5]:
+                st.image(row['posterLink'], use_column_width=True)
+                st.write(row['Movie2'])
+    except:
+        st.text('Please select some movies from the Onboarding Tab :)')
+
+    # Add Refresh and Reset buttons in a single row
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("Refresh"):
+            try:
+                st.session_state.current_bucket_index = (st.session_state.current_bucket_index + 1) % len(buckets)
+            except:
+                st.text('Please select some movies from the Onboarding Tab :)')
+    with col2:
+        # State to track if user wants to reset recommendations
+        if "show_confirm" not in st.session_state:
+            st.session_state["show_confirm"] = False
+
+        if not st.session_state["show_confirm"]:
+            if st.button("Reset Recommendations"):
+                st.session_state["show_confirm"] = True
+        else:
+            st.warning("Are you sure you want to reset all recommendations? This action cannot be undone.")
+            confirm_col1, confirm_col2 = st.columns(2)
+            with confirm_col1:
+                if st.button("Yes, Reset"):
+                    # Call the function to delete relationships
+                    utils.resetRecommendation(st.session_state['email'], st.session_state['password'])
+                    st.success("All recommendations reset successfully! 🎉")
+                    st.session_state["show_confirm"] = False
+            with confirm_col2:
+                if st.button("Cancel"):
+                    st.session_state["show_confirm"] = False
+
+
+# def recommendations_page():
     
-    # Add a "Refresh" button to show the next bucket
-    if st.button("Refresh"):
-        st.session_state.current_bucket_index = (st.session_state.current_bucket_index + 1) % len(buckets)   
+
+
+#     st.markdown("# CineSphere")
+#     st.subheader('Recommendations! 🎥')
+#     st.text('Here are some movies you might like! 🍿')
+    
+#     # State to track if user wants to reset recommendations
+#     if "show_confirm" not in st.session_state:
+#         st.session_state["show_confirm"] = False
+
+#     # Reset Recommendations button
+#     if not st.session_state["show_confirm"]:
+#         if st.button("Reset Recommendations"):
+#             st.session_state["show_confirm"] = True
+#     else:
+#         st.warning("Are you sure you want to reset all recommendations? This action cannot be undone.")
+#         col1, col2 = st.columns(2)
+#         with col1:
+#             if st.button("Yes, Reset"):
+#                 # Call the function to delete relationships
+#                 utils.resetRecommendation(st.session_state['email'], st.session_state['password'])
+#                 st.success("All recommendations reset successfully! 🎉")
+#                 st.session_state["show_confirm"] = False
+#         with col2:
+#             if st.button("Cancel"):
+#                 st.session_state["show_confirm"] = False
+
+#     try:
+#         similarity = utils.generate_recommendations(st.session_state['email'],st.session_state['password'])
+#         # Split the DataFrame into buckets of size 10
+#         buckets = np.array_split(similarity, len(similarity) // 10)
+
+#         if 'current_bucket_index' not in st.session_state:
+#             st.session_state.current_bucket_index = 0
         
+#         current_bucket = buckets[st.session_state.current_bucket_index]
+            
+#         cols = st.columns(5)
+#         for i, (_, row) in enumerate(current_bucket.iterrows()):
+#             with cols[i % 5]:
+#                 st.image(row['posterLink'], use_column_width=True)
+#                 st.write(row['Movie2'])
+#     except:
+#         st.text('Please select some movies from the Onboarding Tab :)')
+#     # Add a "Refresh" button to show the next bucket
+#     try:
+#         if st.button("Refresh"):
+#             st.session_state.current_bucket_index = (st.session_state.current_bucket_index + 1) % len(buckets)   
+#     except:
+#         st.text('Please select some movies from the Onboarding Tab :)')
+
 pages = {
         "Home": home_page,
         "Question? Chat it out": chat_interface_page,
