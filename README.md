@@ -5,9 +5,9 @@
 # CineSphere
 Movie recommendations using Knowledge Graphs and LLMs
 
-> [Technical Presentation](CineSphere%20-%20Presentation.pptx)<br>
+> [Technical Presentation](other%20files/CineSphere%20-%20Presentation.pptx)<br>
 > [Technical Documentation](other%20files/CineSphere%20-%20Technical%20Documentation.pdf)<br>
-> [About Me - Abhishek](Abhishek%20Shankar%20-%20About%20Me.pptx)<br>
+> [About Me - Abhishek](other%20files/Abhishek%20Shankar%20-%20About%20Me.pptx)<br>
 
 ## Introduction 
 
@@ -40,7 +40,10 @@ All the 3 main features are compiled to form a multi-agent tool. This multi-agen
 **Steps to Reproduce**
 
 1) Clone the repo 
-2) Create an .env file with the following variables - 
+
+2) Create a new environment and install the `requirements.txt`
+
+3) Create an `.env file` with the following variables - 
 
 ```
 NEO4J_URI = ''
@@ -49,3 +52,12 @@ NEO4J_PASSWORD = ''
 OPENAI_API_KEY=''
 
 ```
+4) If you are using Neo4j Desktop, add the above raw data to the imports folder in the database. Ensure the **APOC**, **GDS** and **GenAI** libraries are installed.
+
+5) If you are using Neo4j Aura, the structure of the `.env file` might change. Refer to the [Official Documentation](https://neo4j.com/docs/aura/preview/getting-started/quick-start-guide/)
+
+6) Setting up the database is a one time process. Check the [`utils.py`](modules\utils.py) file in the repository
+
+7) Follow the technical documentation pdf mentioned above to set up the database.
+
+8) Navigate to the main folder and run `streamlit run streamlit app.py`
