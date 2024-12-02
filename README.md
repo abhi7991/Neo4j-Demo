@@ -5,10 +5,10 @@
 # CineSphere
 Movie recommendations using Knowledge Graphs and LLMs
 
-> [Technical Presentation](other%20files/CineSphere%20-%20Presentation.pptx)<br>
+> [Technical Presentation](other%20files/CineSphere%20-%20Presentation.pdf)<br>
 > [Technical Documentation](other%20files/CineSphere%20-%20Technical%20Documentation.pdf)<br>
 > [Dataset](https://drive.google.com/drive/folders/1dgmWyh_6Lo_h6yhTZc-6mFDD4p2Fy2jX?usp=drive_link)<br>
-> [About Me - Abhishek](other%20files/Abhishek%20Shankar%20-%20About%20Me.pptx)<br>
+> [About Me - Abhishek](other%20files/Abhishek%20Shankar%20-%20About%20Me.pdf)<br>
 
 ## Introduction 
 
